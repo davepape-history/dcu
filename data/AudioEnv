@@ -1,0 +1,4 @@
+dir /netusr/disk5/evl/pape/data/sounds
+loop duck2.aiff shape=box,-4,4,0,8,-20,-10 maxampl=.10 maxdist=10 length=.81
+random magic.aiff pos=2,6,-5 minampl=.07 maxampl=.15 length=.47 prob=.002 maxdist=10
+wandtrigger gong.aiff shape=sphere,1 pos=-2,4,-3 maxampl=.20 length=5.25 maxdist=50

@@ -1,0 +1,998 @@
+<html>
+<head>
+<title>
+DCU library
+</title>
+<link rev="made" href="mailto:pape&#064;evl.uic.edu">
+</head>
+
+<body>
+<h1>DCU library, Version 1.1</h1>
+<h3> by Dave Pape (dave.pape&#064;acm.org)
+<br> 11 July 1996
+</h3>
+
+<h2>Introduction</h2>
+The DCU library is a set of C++ classes providing utilities for creating
+interactive CAVE environments.
+It includes classes for transforming objects, working with bounding volumes,
+and placing sounds in a 3D world (and a few other things, not all of which are
+documented here.)
+
+<p>
+Some of the demos also require the <a href="http://www.evl.uic.edu/pape/sw/libwave.html">libwave</a>
+library for rendering Wavefront OBJ-format models.
+
+
+<h2>Library Interface</h2>
+
+Major sections:
+<ul>
+<li> <a href="#audio">Audio classes</a>
+<li> <a href="#volume">Volume classes</a>
+<li> <a href="#transform">Transform &amp; Grabber</a>
+<li> <a href="#image">Image &amp; Texture classes</a>
+<li> <a href="#trigger">Trigger</a>
+<li> <a href="#misc">Miscellaneous utilities</a>
+</ul>
+
+<p><hr><p>
+
+<a name="audio">
+<h3> Audio classes </h3>
+
+There are two main parts to the audio classes - samples
+and the <a href="#audioEnv"><i>dcuAudioEnv</i></a> class.
+The sample classes (<i><a href="#sample">dcuSample</a>,
+ <a href="#loopSample">dcuLoopSample</a>, <a href="#triggerSample">dcuTriggerSample</a>,
+ <a href="#wandTriggerSample">dcuWandTriggerSample</a>,
+<a href="#randomSample">dcuRandomSample</a></i>) control individual sound samples, playing
+them and updating them based on the specific class's behavior.
+The dcuAudioEnv class holds a collection of samples, updates
+them as a group, and can automatically build an environment from
+a text description file.
+The <a href="#volume">volume classes</a> can
+be used with samples to control their amplitude and when they are played.
+
+<h4> Sample Classes </h4>
+
+The interfaces to the various sound sample classes are as follows:
+
+<a name="sample">
+<h4> dcuSample </h4>
+
+Generic sound sample object; parent of all the other sample classes.
+
+<p>
+<i>#include "dcuSample.h"</i>
+<p>
+<dl>
+<dt><i>dcuSample::dcuSample(char *file=NULL,float maxAmpl=1)</i>
+<dd> dcuSample constructor.  <i>file</i> is the name of the sound file that the
+  sample will play, <i>maxAmpl</i> is the maximum amplitude.  These can be
+  changed later by <i>setFile()</i> and <i>setMaxAmplitude()</i>.
+<dt><i>void dcuSample::start()</i>
+<dd> Initializes the sample when it first becomes "active".  This will
+  cause a <a href="#loopSample">dcuLoopSample</a> to begin playing; all other
+  sample classes currently do nothing.
+<dt><i>void dcuSample::play(float *userPos=NULL,float curTime=0)</i>
+<dd> Sends a message to vss to begin playing the sound sample.
+  <i>userPos</i> is the current position of the user in world space;
+  if it is given, the sample's amplitude will be set based on the
+  user's distance.  <i>curTime</i> is the current time; it is used
+  to determine when update() should stop the sample, and
+  in controlling the attack &amp; decay.
+<dt><i>void dcuSample::update(float *userPos,float curTime)</i>
+<dd> Updates the sample, if it is playing.
+  <i>userPos</i> is the current position of the user in world space;
+  <i>curTime</i> is the current time.
+  If the sample's end time has been reached (based on curTime
+  and length()), it will be stopped.  Otherwise, its amplitude
+  will be updated, based on the distance from the user to the sound,
+  maxAmplitude(), maxDistance(), attack(), and decay().
+  <br>
+  Subclasses of dcuSample will also perform their behavior-specific
+  updates in this function, which may include playing the sample
+  (in the dcuTriggerSample and dcuRandomSample classes).
+<dt><i>void dcuSample::stop(void)</i>
+<dd> Sends a message to vss to stop playing the sound sample,
+  if it is playing.  The sample is stopped immediately - the decay
+  setting is not used in this case.
+<dt><i>int  dcuSample::isPlaying(void)</i>
+<dd> Returns 1 if the sample is currently playing, 0 otherwise.
+  This will be true if play() has been called, and stop()
+  has not been called since then.
+<dt><i>int dcuSample::parseOption(char *opt)</i>
+<dd> Parses a line of sample options from a dcuAudioEnv description file,
+  and sets the sample's values from those options.  See below for
+  the dcuAudioEnv description file format.
+<dt><i>void dcuSample::setVolume(dcuVolume *vol)</i>
+<dd> Sets the sample's volume (not to be confused with amplitude).
+  <i>vol</i> is a dcuVolume which represents the space occupied
+  by the sound.
+<dt><i>void dcuSample::setDirectory(char *dir)</i>
+<dd> Sets the sample's directory.  A message will be sent to vss to
+  set the directory of the sample's actor.
+<dt><i>void dcuSample::setFile(char *file)</i>
+<dd> Defines the AIFF sound file that the sample will play.
+<dt><i>void dcuSample::setLength(float len)</i>
+<dd> Indicates the length of the sound file.  This is used by
+  update() to decide when to stop playing the sample
+  (and when to decay it).
+<dt><i>void dcuSample::setMaxAmplitude(float maxamp)</i>
+<dd> Sets the maximum amplitude for the sample.  This is the amplitude
+  that it will be played at when the user's distance from the sample is 0.
+<dt><i>void dcuSample::setMaxDistance(float maxdist)</i>
+<dd> Sets the maximum range for the sample to be audible.  When the
+  user's distance from the sample is <i>maxdist</i> or greater, the
+  amplitude will be 0 (it will continue playing, however).
+<dt><i>void dcuSample::setAttack(float att)</i>
+<dd> Defines the attack time for the sample.  The sample's amplitude
+  is multiplied by a scaling factor, which linearly increases from
+  0 to 1 in the first <i>att</i> seconds when it is played.
+<dt><i>void dcuSample::setDecay(float dec)</i>
+<dd> Defines the decay time for the sample.  The amplitude scaling
+  factor is linearly decreased from 1 back to 0 in the final <i>dec</i>
+  seconds that the sample is played.
+<dt><i>dcuVolume * dcuSample::volume(void)</i>
+<dd> Returns the sample's volume, as set by setVolume().
+<dt><i>char * dcuSample::directory(void)</i>
+<dd> Returns the sample's directory, as set by setDirectory().
+<dt><i>char * dcuSample::file(void)</i>
+<dd> Returns the sample's AIFF file name, as set by setFile().
+<dt><i>float dcuSample::length(void)</i>
+<dd> Returns the sample's length, as set by setLength().
+<dt><i>float dcuSample::maxAmplitude(void)</i>
+<dd> Returns the sample's maximum amplitude, as set by setMaxAmplitude().
+<dt><i>float dcuSample::maxDistance(void)</i>
+<dd> Returns the sample's maximum audible distance, as set by setMaxDistance().
+<dt><i>float dcuSample::attack(void)</i>
+<dd> Returns the sample's attack time, as set by setAttack().
+<dt><i>float dcuSample::decay(void)</i>
+<dd> Returns the sample's decay time, as set by setDecay().
+</dl>
+
+<p>
+The default settings for a newly created dcuSample are:
+no file or directory, length 0, maximum amplitude 1, maximum distance
+DCU_DEFAULT_MAX_DIST (defined in dcuSample.h), attack and decay 0,
+and a generic dcuVolume (which occupies infinite space - i.e.,
+the distance to any position is 0).
+<p>
+The dcuSample constructor creates a vss SampleActor for
+the sound.  Hence, samples should not be created until after
+BeginSoundServer() is called.
+<p>
+A dcuSample object can be used to simply play sound files when
+needed, or to control dynamic, positional sounds.  The following
+code fragment is an example of playing a sound without any subsequent
+updates; the sound will be played at the specified maximum amplitude,
+since it uses the default dcuVolume.
+<pre>
+	BeginSoundServer();
+	dcuSample * sample = new dcuSample("sound.aiff",0.25);
+	sample->setDirectory("/usr/data/sounds");
+	sample->play();
+	sleep(5);
+	delete sample;
+	EndSoundServer();
+</pre>
+To play a positional sound, the update() function must be called
+frequently, in order for the amplitude to be adjusted for the user's
+position.  Also, a volume other than the default and a non-zero length
+must be set.  The following fragment starts a sound which is defined
+to be 240 seconds long; it is assigned a dcuPointVolume (with a default
+position of (0,0,0)).
+<pre>
+	float userPos[3];
+	dcuSample * sample = new dcuSample("sound.aiff",0.25);
+	sample->setDirectory("/usr/data/sounds");
+	sample->setLength(240.0);
+	sample->setVolume(new dcuPointVolume);
+	CAVEGetPosition(CAVE_HEAD_NAV, userPos);
+	sample->play(userPos,CAVEGetTime());
+	while (1)
+		{
+		navigate();
+		CAVEGetPosition(CAVE_HEAD_NAV, userPos);
+		sample->update(userPos,CAVEGetTime());
+		sginap(1);
+		}
+</pre>
+
+
+<a name="loopSample">
+<h4> dcuLoopSample </h4>
+
+Infinitely looping sound object.
+
+<p>
+<i>#include "dcuLoopSample.h"</i>
+<p>
+<dl>
+<dt><i>void dcuLoopSample::start()</i>
+<dd> Starts playing the sample.  A default user position of
+(1000000,1000000,1000000) is passed to play().
+<dt><i>void dcuLoopSample::play(float *userPos,float curTime)</i>
+<dd> Starts playing the sample.
+</dl>
+
+A dcuLoopSample controls a sound which will loop continually once it
+is started, until stop() is called.  update() will not stop the sound.
+It is otherwise the same as a dcuSample.
+
+
+<a name="randomSample">
+<h4> dcuRandomSample </h4>
+
+Randomly played sound object.
+
+<p>
+<i>#include "dcuRandomSample.h"</i>
+<p>
+<dl>
+<dt><i>void dcuRandomSample::setProbability(float prob)</i>
+<dd> Defines the probability of the sample being played any time update()
+  is called.
+<dt><i>void dcuRandomSample::setMinRandomAmplitude(float min)</i>
+<dd> Sets the minimum value to choose for the sound's amplitude when it
+  plays.
+<dt><i>void dcuRandomSample::setMaxRandomAmplitude(float max)</i>
+<dd> Sets the maximum value to choose for the sound's amplitude when it
+  plays.
+<dt><i>float dcuRandomSample::probability(void)</i>
+<dd> Returns the probability as set by setProbability().
+<dt><i>float dcuRandomSample::minRandomAmplitude(void)</i>
+<dd> Returns the minimum amplitude as set by setMinRandomAmplitude().
+<dt><i>float dcuRandomSample::maxRandomAmplitude(void)</i>
+<dd> Returns the maximum amplitude as set by maxRandomAmplitude().
+<dt><i>float dcuRandomSample::update(float *userPos,float curTime)</i>
+<dd> Updates the sample.  If the sample is not currently playing, a
+  random value between 0 and 1 is picked; if the value is less than
+  probability(), the sample is played.  Any time the sample is played,
+  a new maximum amplitude is picked from the range [minRandomAmplitude(),
+  maxRandomAmplitude()].
+  <br>
+  When playing, the sample is updated by the normal dcuSample update() function.
+</dl>
+
+The default setting for probability is 0.005, and for minRadnomAmplitude
+and maxRandomAmplitude is 1.0.
+<p>
+A dcuRandomSample is a sound sample which is triggered at random
+intervals by update().  The maximum amplitude of the sample is also
+set randomly, each time it is started by update().  update() will
+not start more than one instance of the sound at a time.
+
+
+
+<a name="triggerSample">
+<h4> dcuTriggerSample </h4>
+
+Sound object triggered by user proximity.
+
+<p>
+<i>#include "dcuTriggerSample.h"</i>
+<p>
+<dl>
+<dt><i>void dcuTriggerSample::setRadius(float rad)</i>
+<dd> Defines the triggering radius.  When the user moves within <i>rad</i>
+  distance of the sample, it will be played.
+<dt><i>float dcuTriggerSample::radius(void)</i>
+<dd> Returns the radius as set by setRadius().
+<dt><i>float dcuTriggerSample::update(float *userPos,float curTime)</i>
+<dd> Updates the sample.  If the distance from the user to the sample's
+  volume is less than the defined radius, the sound begins playing;
+  the volume used for triggering is the same as that used for amplitude
+  control.  Once the sample has been triggered, it will not be played
+  again until the user first moves outside of its radius (i.e. it will
+  only play once while the user is inside the radius).
+  <br>
+  When playing, the sample is updated by the normal dcuSample update() function.
+</dl>
+
+The default trigger radius is 1.
+<p>
+A dcuTriggerSample is a sound which is automatically played whenever
+the user moves near it.  Whenever update() determines that the user
+has entered the sample's area of effect, it is immediately played.
+The sample then latches until the user moves back outside the area
+of effect, so that it will only be played one time whenever the
+user enters the area.
+When the sample is triggered, it plays once for its entire length -
+it does not stop if the user moves outside of the triggering radius.
+
+
+<a name="wandTriggerSample">
+<h4> dcuWandTriggerSample </h4>
+
+Sound object triggered by wand proximity; subclass of dcuTriggerSample.
+
+<p>
+<i>#include "dcuWandTriggerSample.h"</i>
+<p>
+<dl>
+<dt><i>float dcuWandTriggerSample::update(float *userPos,float curTime)</i>
+<dd> Updates the sample.  update gets the current navigated position of
+  the wand; the sound is triggered as in the dcuTriggerSample, except
+  using the distance to the wand instead of the distance to the user.
+  <br>
+  When playing, the sample is updated by the normal dcuSample update() function.
+</dl>
+
+A dcuWandTriggerSample functions exactly like a dcuTriggerSample, except
+that it is triggered by the wand position rather than the user's position.
+
+
+<a name="audioEnv">
+<h3> dcuAudioEnv Class </h3>
+
+Audio environment manager object.
+A dcuAudioEnv is used to collect dcuSample objects into a group;
+the dcuAudioEnv can then automatically handle the updates for all
+the samples at once.  It can also read in an audio environment description
+file an create all the samples defined in the file.
+
+<p>
+<i>#include "dcuAudioEnv.h"</i>
+<p>
+<dl>
+<dt><i>void dcuAudioEnv::addSample(dcuSample *sample)</i>
+<dd> Adds a sample to the dcuAudioEnv's list of samples to update.
+ If the sample does not have a directory already set, it will be
+ assigned the environment's default directory.
+<dt><i>void dcuAudioEnv::removeSample(dcuSample *sample)</i>
+<dd> Removes the given sample from the environment's list of
+ samples (if it is found).  If the sample is active, it will be
+ sent a stop() command.
+<dt><i>void dcuAudioEnv::removeAllSamples(int del=0)</i>
+<dd> Removes all the samples from the environment's list.  stop() is
+ called for any samples which are active.
+ If the flag <i>del</i> is true, each sample object is <i>delete</i>d
+ as it is removed from the list.
+<dt><i>void dcuAudioEnv::update(int state=1)</i>
+<dd> Updates all samples in the environment.  <i>state</i> is an
+ optional flag indicating whether the environment should be active
+ or not.  If <i>state</i> is true (it is active), update() is called
+ for each of the environment's samples.  Whenever the environment
+ changes from an inactive to active state, start() is called for each
+ sample; when it transitions from active to inactive, stop() is called
+ for each sample.  The samples are updated using the current CAVE user's
+ head position in world coordinates (i.e., CAVEGetPosition(CAVE_HEAD_NAV,userPos))
+ and the current CAVE time (CAVEGetTime()).
+<dt><i>void dcuAudioEnv::setDefaultDirectory(char *dir)</i>
+<dd> Sets the default directory for samples which are subsequently added
+  to the environment.
+<dt><i>char * dcuAudioEnv::defaultDirectory(void)</i>
+<dd> Returns the directory set by setDefaultDirectory().
+<dt><i>void dcuAudioEnv::readEnvFile(char *file)</i>
+<dd> Reads a dcuAudioEnv description file and adds all the listed samples
+ to the environment.
+</dl>
+
+
+
+<p><hr><p>
+
+<a name="volume">
+<h3> Volume Classes </h3>
+
+The volume classes represent simple bounding volumes; they
+provide functions for computing the distance of a point to the volume
+and for determining if a point is inside the volume.  
+Volumes can be 3, 2, 1, or 0 dimensional.
+Volumes are used with the <a href="#audio">sample classes</a>
+to compute the distance from the user to the sound.
+The available classes are <a href="#basicVolume">dcuVolume</a>,
+<a href="#pointVolume">dcuPointVolume</a>, <a href="#sphereVolume">dcuSphereVolume</a>,
+and <a href="#boxVolume">dcuBoxVolume</a>.
+<p>
+The interfaces to the different classes are as follows:
+
+<a name="basicVolume">
+<h4> dcuVolume </h4>
+
+Generic volume object; parent of all other volume classes.
+
+<p>
+<i>#include "dcuVolume.h"</i>
+<p>
+<dl>
+<dt><i>float dcuVolume::distanceSq(const float p[3])</i>
+<dt><i>float dcuVolume::distanceSq(float x,float y,float z)</i>
+<dd> Returns the square of the distance from point <i>p</i> (or <i>x,y,z</i>)
+  to the volume.
+  Any point within the volume has distance of 0; for points outside the
+  volume, the distance is that to the nearest point on the volume's edge.
+<dt><i>float dcuVolume::distance(float p[3])</i>
+<dt><i>float dcuVolume::distance(float x,float y,float z)</i>
+<dd> Returns the distance from a point to the volume.  This
+  requires computing a square root, and so is sometimes more expensive
+  than distanceSq().
+<dt><i>int dcuVolume::contains(const float p[3])</i>
+<dt><i>int dcuVolume::contains(float x,float y,float z)</i>
+<dd> Returns true if the given point is within the volume, false otherwise.
+<dt><i>void setCenter(const float p[3])</i>
+<dt><i>void setCenter(float x,float y,float z)</i>
+<dd> Sets the position of the volume.  This is typically the volume's
+  origin, which it is centered around.
+<dt><i>void setDimensions(int dim)</i>
+<dd> Defines which dimensions to use in computing distances to the volume.
+  <i>dim</i> is a bitmask, formed by OR'ing any or all of the constants
+  DCU_X_DIM, DCU_Y_DIM, and DCU_Z_DIM.  Only these dimensions will be used
+  by the distance functions; the volume effectively extends infinitely in
+  all other dimensions.
+<dt><i>void setTransform(dcuTransform *t)</i>
+<dd> Sets a transformation associated with the volume.  When a
+  <a href="#transform">dcuTransform</a> <i>t</i> is assigned to a volume, all distance
+  and containment tests will be performed with the volume transformed by <i>t</i>.
+<dt><i>void getCenter(float p[3])</i>
+<dd> Returns the center of the volume, as set by setCenter().
+<dt><i>int dimensions(void)</i>
+<dd> Returns the dimensions as set by setDimensions().
+<dt><i>dcuTransform * getTransform(void)</i>
+<dd> Returns the transformation as set by setTransform().
+</dl>
+
+The default dimensions for a volume are all 3, DCU_X_DIM | DCU_Y_DIM | DCU_Z_DIM;
+the default position is (0,0,0).
+<p>
+The generic dcuVolume class is primarily a parent for the other volume
+classes.  It represents an infinite space - any point is inside the
+space, and the distance functions will always return 0.
+
+
+<a name="pointVolume">
+<h4> dcuPointVolume </h4>
+
+Single point volume.
+
+<p>
+<i>#include "dcuPointVolume.h"</i>
+<p>
+
+A dcuPointVolume represents a single point.  The distance of any
+point from the volume is the Euclidean distance from the volume's
+position defined by setCenter().
+
+
+<a name="sphereVolume">
+<h4> dcuSphereVolume </h4>
+
+Spherical volume.
+
+<p>
+<i>#include "dcuSphereVolume.h"</i>
+<p>
+<dl>
+<dt><i>void dcuSphereVolume::setRadius(float rad)</i>
+<dd> Defines the radius of the volume.
+<dt><i>float radius(void)</i>
+<dd> Returns the radius as set by setRadius().
+</dl>
+
+The default radius of a dcuSphereVolume is 1.
+<p>
+A dcuSphereVolume represents an n-dimensional sphere - it contains all
+points which are within radius() units of the volume's origin (getCenter()).
+
+
+<a name="boxVolume">
+<h4> dcuBoxVolume </h4>
+
+Axis-aligned box volume.
+
+<p>
+<i>#include "dcuBoxVolume.h"</i>
+<p>
+<dl>
+<dt><i>void dcuBoxVolume::setRange(const float r[6])</i>
+<dt><i>void dcuBoxVolume::setRange(float minX,float maxX,float minY,float maxY,float minZ,float maxZ)</i>
+<dd> Defines the range covered by the box in each dimension. <i>r[0]</i>
+  is the minimum X of the box, <i>r[1]</i> is the maximum X,
+  <i>r[2]</i> is the minimum Y, <i>r[3]</i> is the maximum Y,
+  <i>r[4]</i> is the minimum Z, and <i>r[5]</i> is the maximum Z.
+  The center of the volume will be set to the middle of these ranges.
+<dt><i>void dcuBoxVolume::setSize(const float size[3])</i>
+<dt><i>void dcuBoxVolume::setSize(float x,float y,float z)</i>
+<dd> Defines the size of the box.  The volume will extend by <i>size[d]/2</i> units
+  from the center in both directions, in each dimension <i>d</i>.
+<dt><i>void dcuBoxVolume::setCenterAndSize(const float center[3],const float size[3])</i>
+<dd> Sets both the center and the size of a box in one call.
+<dt><i>void dcuBoxVolume::getSize(const float size[3])</i>
+<dd> Gets the box's size, as defined by setSize().
+<dt><i>void dcuBoxVolume::getRange(float r[6])</i>
+<dd> Gets the box's range, as defined by setRange(), or by the size and center.
+</dl>
+
+The default size of a box is 1 in each dimension.
+<p>
+A dcuBoxVolume is an axis-aligned box; points which lie between the
+box's minimum &amp; maximum in each dimension are inside the box.
+
+
+
+<p><hr><p>
+
+<a name="transform">
+<h3> Transformation Classes </h3>
+
+The transformation classes handle GL transformations for 3D objects.
+The base <a href="#baseTransform">dcuTransform</a> class stores its
+matrix in shared memory, and so can be used to manipulate a transformation
+from any process.
+<p>
+The <a href="#grabberTransform">dcuGrabber</a> subclass is for grabbing
+objects with the wand or other sensors; it takes care of switching between
+world-space and sensor-space coordinates, so that when an object is grabbed
+or released it stays in the same position and orientation.
+<p>
+Class interfaces:
+
+<a name="baseTransform">
+<h4> dcuTransform </h4>
+
+Stores and manipulates a 4x4 transformation matrix.  The standard GL-style
+translate, rotate, and scale operations can be applied to the matrix.
+The matrix is stored in shared memory; a CAVELOCK is used to control
+access to it.
+<br>
+<i>Note</i>: The inverse matrix routines assume that the transformation
+is affine.  If a non-affine matrix is created (via loadMatrix(), preMultMatrix(),
+or postMultMatrix()), the results are undefined.
+<p>
+
+<i>#include "dcuTransform.h"</i>
+<p>
+<dl>
+<dt><i>void dcuTransform::glTransform(void)</i>
+<dd> Applies the transform's current matrix, using glMultMatrix().
+<dt><i>void dcuTransform::makeIdentity(void)</i>
+<dd> Loads the transform's matrix with the identity matrix.
+<dt><i>void dcuTransform::translate(float x,float y,float z)</i>
+<dd> Adds a translation by <i>(x,y,z)</i> to the transform's matrix.
+<dt><i>void dcuTransform::rotate(float angle,float x,float y,float z)</i>
+<dd> Adds a rotation by <i>angle</i> degrees around the axis <i>(x,y,z)</i>
+  to the transform's matrix.
+<dt><i>void dcuTransform::scale(float s)</i>
+<dd> Adds a uniform scaling by <i>s</i> to the transform's matrix.
+<dt><i>void dcuTransform::scale(float sx,float sy,float sz)</i>
+<dd> Adds a scaling by <i>(sx,sy,sz)</i> to the transform's matrix.
+<dt><i>void dcuTransform::getMatrix(float m[4][4])</i>
+<dd> Returns the current matrix.
+<dt><i>void dcuTransform::getInverseMatrix(float inv[4][4])</i>
+<dd> Returns the inverse of the current matrix.
+<dt><i>void dcuTransform::loadMatrix(float m[4][4])</i>
+<dd> Replaces the transform's matrix with <i>m</i>.
+<dt><i>void dcuTransform::postMultMatrix(float m[4][4])</i>
+<dt><i>void dcuTransform::postMultMatrix(float *m)</i>
+<dd> Post-multiplies the transform's matrix by <i>m</i>.
+<dt><i>void dcuTransform::preMultMatrix(float m[4][4])</i>
+<dt><i>void dcuTransform::preMultMatrix(float *m)</i>
+<dd> Pre-multiplies the transform's matrix by <i>m</i>.
+<dt><i>void dcuTransform::transformPoint(float p[3])</i>
+<dd> Multiplies the point <i>p</i> by the current matrix; the result is
+  returned in <i>p</i>.
+<dt><i>void dcuTransform::transformVector(float v[3])</i>
+<dd> Multiplies the direction vector <i>v</i> by the current matrix; the result is
+  returned in <i>v</i>. A vector will be affected by the transform's rotation and
+  scaling, but not by translation.
+<dt><i>void dcuTransform::inverseTransformPoint(float v[3])</i>
+<dd> Multiplies the point <i>p</i> by the inverse of the current matrix; the result is
+  returned in <i>p</i>.
+<dt><i>void dcuTransform::inverseTransformVector(float v[3])</i>
+<dd> Multiplies the direction vector <i>v</i> by the inverse of the current matrix;
+  the result is returned in <i>v</i>. A vector will be affected by the transform's
+  rotation and scaling, but not by translation.
+</dl>
+
+The dcuTransform constructor loads the identity matrix by default.
+Because it allocates shared memory and a lock, a dcuTransform cannot be created until
+after CAVEConfigure() has been called.
+<p>
+The following code fragment demonstrates the basic use of a dcuTransform to
+animate an object:
+<pre>
+	dcuTransform *transform;
+	
+	main(int argc,char **argv)
+	{
+	 CAVEConfigure(&argc,argv,NULL);
+	 transform = new dcuTransform;
+	 CAVEInit();
+	 CAVEDisplay(draw_fn,0);
+	 while (1)
+		{
+		transform->rotate(2.0, 0.0,1.0,0.0);
+		sginap(10);
+		}
+	}
+
+	void draw_fn(void)
+	{
+	...
+	glPushMatrix();
+	transform->glTransform();
+	draw_the_object();
+	glPopMatrix();
+	...
+	}
+</pre>
+
+<a name="grabberTransform">
+<h4> dcuGrabber </h4>
+
+Class for grabbing objects with a CAVE sensor; subclass of dcuTransform.
+
+<p>
+<i>#include "dcuGrabber.h"</i>
+<p>
+<dl>
+<dt><i>dcuGrabber::dcuGrabber(CAVE_SENSOR_ST *sensor=CAVESENSOR(1))</i>
+<dd> Constructor.  <i>sensor</i> is a pointer to the CAVE sensor to "attach" the
+  dcuGrabber to when it grabs;  the default is the wand sensor.
+<dt><i>void dcuGrabber::setSensor(CAVE_SENSOR_ST *sensor)</i>
+<dd> Defines the sensor to which the dcuGrabber is attached when <i>grab()</i> is called.
+  If the dcuGrabber is in a grabbed state when this is called, it will automatically
+  release() itself before changing sensors, and then grab() again after changing
+  sensors.
+<dt><i>CAVE_SENSOR_ST * dcuGrabber::sensor(void)</i>
+<dd> Returns the CAVE sensor set by setSensor().
+<dt><i>void dcuGrabber::grab(void)</i>
+<dd> Activates the dcuGrabber.  While in a grabbed state, the dcuGrabber's will move
+  and rotate with its sensor.
+<dt><i>void dcuGrabber::release(void)</i>
+<dd> Deactivates the dcuGrabber.  When released, the dcuGrabber will remain fixed in
+  world space.  Any release() calls made when not in a grabbed state are ignored. 
+<dt><i>int dcuGrabber::grabbed(void)</i>
+<dd> Returns true if the dcuGrabber is currently in a grabbed state, false otherwise.
+</dl>
+
+A dcuGrabber's grab() state flag and sensor pointer are stored in shared memory.
+<p>
+The following code fragment demonstrates the basic use of a dcuGrabber:
+<pre>
+	dcuGrabber *grabber;
+
+	main(int argc,char **argv)
+	{
+	...
+	grabber = new dcuGrabber;
+	...
+	while (1)
+		{
+		int cb1 = CAVEButtonChange(1);
+		if (cb1 == 1)			/* Grab whenever button 1 is pressed */
+			grabber->grab();
+		else if (cb1 == -1)		/* Release when button 1 is released */
+			grabber->release();
+		...
+		}
+	}
+
+	void draw_fn(void)
+	{
+	...
+	glPushMatrix();
+	grabber->glTransform();
+	draw_the_object();
+	glPopMatrix();
+	...
+	}
+</pre>
+
+A dcuGrabber can be assigned to a dcuVolume as the volume's transform.
+This code fragment shows how to use a grabber and a volume together to
+grab an object only when the wand is within its bounding volume:
+<pre>
+	dcuGrabber *grabber;
+
+	main(int argc,char **argv)
+	{
+	...
+	grabber = new dcuGrabber;
+	dcuSphereVolume *volume = new dcuSphereVolume;
+	volume->setCenter(objectCenter);	/* Define the object's bounding sphere */
+	volume->setRadius(objectRadius);
+	volume->setTransform(grabber);
+	...
+	while (1)
+		{
+		int cb1 = CAVEButtonChange(1);
+		if (cb1 == 1)			/* Grab when button 1 is pressed */
+			{			/* inside the volume */
+			float wandPos[3];
+			CAVEGetPosition(CAVE_WAND_NAV,wandPos);
+			if (volume->contains(wandPos))
+				grabber->grab();
+			}
+		else if (cb1 == -1)		/* Release when button 1 is released */
+			grabber->release();
+		...
+		}
+	}
+
+	void draw_fn(void)
+	{
+	...
+	glPushMatrix();
+	grabber->glTransform();
+	draw_the_object();
+	glPopMatrix();
+	...
+	}
+</pre>
+
+
+
+
+<p><hr><p>
+
+<a name="image">
+<h3> Image &amp; Texture classes </h3>
+
+<h4> dcuImage </h4>
+
+Class for loading SGI format images.  Images are stored 32 bit longword
+arrays.
+
+<p>
+<i>#include "dcuImage.h"</i>
+<p>
+<dl>
+<dt><i>dcuImage::dcuImage(char *file=NULL,int byteOrder=DCU_ABGR)</i>
+<dd> Constructor.  <i>file</i> is the name of an image file to load;
+  <i>byteOrder</i> is the ordering of longword bytes to use - either DCU_ABGR
+  or DCU_RGBA.  If no file name is given, a 1x1 dummy image is created.
+<dt><i>void dcuImage::setByteOrder(int order)</i>
+<dd> Sets the longword byte ordering to use in the image data; either DCU_ABGR
+  or DCU_RGBA.  DCU_ABGR is the traditional <i>longimagedata()</i> ordering;
+  DCU_RGBA corresponds to OpenGL's preferred GL_RGBA ordering.
+  If an image has already been loaded, and <i>order</i> is different than the
+  current byte ordering, the image data will be converted to the new ordering.
+<dt><i>int dcuImage::loadFile(char *filename)</i>
+<dd> Loads the image file <i>filename</i>.  If another image is already loaded,
+  its data is freed before reading the new one.  loadFile() returns TRUE if the
+  image was read successfully, FALSE if it fails.
+<dt><i>void dcuImage::setImage(unsigned long *img,int xdim,int ydim)</i>
+<dd> Sets the image data to the given pointer and dimensions.  Any previous
+  image data is freed.
+<dt><i>void dcuImage::copyImage(unsigned long *image,int xdim,int ydim)</i>
+<dd> Copies the <i>xdim</i> x <i>ydim</i> array <i>image</i> and makes this
+  the new image data.  Any previous image data is freed.
+<dt><i>void dcuImage::createImage(int xdim,int ydim)</i>
+<dd> Creates a new image data array of <i>xdim</i> x <i>ydim</i> longwords.
+  The array is initialized to all zeroes.
+<dt><i>int dcuImage::writeFile(char *filename)</i>
+<dd> Saves the image in the SGI image file <i>filename</i>.  It is saved
+  as a 4 channel image.  The dcuImage's file name is not changed by this
+  operation.
+<dt><i>unsigned long *dcuImage::image(void)</i>
+<dd> Returns a pointer to the image data.  The data is an array of <i>xdim()</i>
+  x <i>ydim()</i> longwords.
+<dt><i>int dcuImage::xdim(void)</i>
+<dd> Returns the width of the image.
+<dt><i>int dcuImage::ydim(void)</i>
+<dd> Returns the height of the image.
+<dt><i>void dcuImage::dimensions(int dim[2])</i>
+<dd> Returns the dimensions of the image in <i>dim</i>; dim[0] is the width,
+  dim[1] is the height.
+<dt><i>char *dcuImage::filename(void)</i>
+<dd> Returns the name of the currently loaded file, as set by either the constructor
+  or loadFile().
+<dt><i>int dcuImage::byteOrder(void)</i>
+<dd> Returns the byte ordering of the image, either DCU_ABGR or DCU_RGBA.
+</dl>
+
+
+<a name="texture">
+<h4> dcuTexture </h4>
+
+Creates an OpenGL texture map from a dcuImage.
+The texture object extension (glBindTextureEXT()) will be used in defining and
+binding the texture, if the graphics hardware supports it; if not, a display list
+will be used.
+
+<p>
+<i>#include "dcuTexture.h"</i>
+<p>
+<dl>
+<dt><i>dcuTexture::dcuTexture(char *filename=NULL,int byteOrder=DCU_ABGR,int mipmap=0)</i>
+<dd> Constructor; creates a dcuImage from the SGI image <i>filename</i>, with the
+  byte ordering <i>byteOrder</i>. Sets the mipmapping flag to <i>mipmap</i>.
+<dt><i>void dcuTexture::define(void)</i>
+<dd> Defines an OpenGL texture map using the current image.  The texture parameters
+  will be set from the selected filtering and wrapping values.  If mipmap() is true,
+  a mipmapped texture will be created via gluBuild2DMipmaps().  If the image's dimensions
+  are not powers of two, a copy will be made which is scaled to the largest powers of
+  2 less than the image's size.
+<dt><i>void dcuTexture::bind(void)</i>
+<dd> Enables texture mapping and binds the texture, if it has been defined.
+  If the texture has not been defined yet, bind() will disable texturing.
+  (Call dontChangeTextureMode() to prevent bind() from enabling or disabling texturing.)
+<dt><i>void dcuTexture::setImage(dcuImage *image)</i>
+<dd> Sets the dcuImage to use when the texture is defined.
+<dt><i>void dcuTexture::setMinFilter(GLint val)</i>
+<dd> Sets the minification filter to use in define().  <i>val</i> should be an appropriate
+  value for the GL_TEXTURE_MIN_FILTER texture parameter.
+<dt><i>void dcuTexture::setMagFilter(GLint val)</i>
+<dd> Sets the magnification filter to use in define().  <i>val</i> should be an appropriate
+  value for the GL_TEXTURE_MAG_FILTER texture parameter.
+<dt><i>void dcuTexture::setWrapS(GLint val)</i>
+<dd> Sets the S-coordinate wrapping mode to use in define().
+  <i>val</i> should be an appropriate value for the GL_TEXTURE_WRAP_S texture parameter.
+<dt><i>void dcuTexture::setWrapT(GLint val)</i>
+<dd> Sets the T-coordinate wrapping mode to use in define().
+  <i>val</i> should be an appropriate value for the GL_TEXTURE_WRAP_T texture parameter.
+<dt><i>void dcuTexture::setWrap(GLint val)</i>
+<dd> Sets both the S- and T-coordinate wrapping modes.
+<dt><i>void dcuTexture::setMipmap(int flag=1)</i>
+<dd> Sets the mipmapping flag for define().
+<dt><i>void dcuTexture::dontChangeTextureMode(void)</i>
+<dd> Prevents bind() from calling glDisable(GL_TEXTURE_2D) or glEnable(GL_TEXTURE_2D).
+<dt><i>dcuImage * dcuTexture::image(void)</i>
+<dd> Returns the dcuImage used by the texture, which was either created by the
+  constructor or set by setImage().
+<dt><i>GLint dcuTexture::minFilter(void)</i>
+<dd> Returns the minification filter as set by setMinFilter().
+<dt><i>GLint dcuTexture::magFilter(void)</i>
+<dd> Returns the magnification filter as set by setMagFilter().
+<dt><i>GLint dcuTexture::wrapS(void)</i>
+<dd> Returns the S-coordinate wrapping mode as set by setWrapS().
+<dt><i>GLint dcuTexture::wrapT(void)</i>
+<dd> Returns the T-coordinate wrapping mode as set by setWrapT().
+<dt><i>int dcuTexture::mipmap(void)</i>
+<dd> Returns true if mipmapping is enabled, false if not.
+</dl>
+
+The default minification and magnification filters are GL_NEAREST.
+The default wrapping modes are GL_REPEAT.
+
+
+
+<a name="sharedImage">
+<h4> dcuSharedImage </h4>
+
+Loads an SGI format image, storing the data in shared memory.  A subclass of dcuImage.
+
+<p>
+<i>#include "dcuSharedImage.h"</i>
+<p>
+The public interface to dcuSharedImage is identical to that of dcuImage.
+However, when an image is loaded, its data (and dimensions) are placed in
+shared memory, allocated by CAVEMalloc().
+As long as the dcuSharedImage object itself is created before calling CAVEInit(),
+the image data will be visible to all CAVE processes, even if an image
+is loaded after CAVEInit().
+dcuSharedImage::setImage() should only be passed pointers to image data
+in shared memory; for non-shared data, use copyImage().
+<p>
+A dcuSharedImage can be used with a dcuTexture to create a "delayed texture",
+so that a program does not have to wait for all the images to be loaded before
+beginning rendering.  The following code fragment demonstrates this:
+<pre>
+	dcuTexture *texmap;
+
+	void defineTexture(void)
+	{
+	 texmap->define();
+	}
+
+	void drawfn(void)
+	{
+	...
+	 texmap->bind(); /* If the texture hasn't been defined, this will just turn off texturing */
+	 glBegin(GL_TRIANGLE_STRIP);
+	  glTexCoord3fv(tc[0]);
+	  glVertex3fv(vert[0]);
+	  glTexCoord3fv(tc[1]);
+	  glVertex3fv(vert[1]);
+	  glTexCoord3fv(tc[2]);
+	  glVertex3fv(vert[2]);
+	 glEnd();
+	...
+	}
+
+	main(int argc,char **argv)
+	{
+	 dcuSharedImage *img;
+	 CAVEConfigure(&argc,argv,NULL);
+	 texmap = new dcuTexture;	/* Create the texture, but don't wait to load the image */
+	 img = new dcuSharedImage;
+	 texmap->setImage(img);
+	 CAVEInit();
+	 CAVEDisplay(drawfn,0);
+	 img->loadFile("texture.rgb");	/* Now load the image in parallel with the graphics */
+	 CAVEInitApplication(defineTexture,0);	/* Tell the graphics to define() the texture */
+	...
+	}
+</pre>
+This method can also be used to change a texture map dynamically, without making
+the display processes take time to read the file from disk.
+
+
+<p><hr><p>
+
+<a name="trigger">
+<h3> Trigger Class </h3>
+
+A dcuTrigger associates callback functions with a volume.
+Whenever the position data passed to the trigger enters or leaves
+the volume, the corresponding function is called.
+
+<p>
+<i>#include "dcuTrigger.h"</i>
+<p>
+<dl>
+<dt><i>dcuTrigger::dcuTrigger(dcuVolume *vol=NULL)</i>
+<dd> Constructor; <i>vol</i> is the volume to test position data against.
+<dt><i>typedef void (*dcuCallback)(void *)</i>
+<dd> The type for trigger callback functions.
+<dt><i>void dcuTrigger::setEnterCallback(dcuCallback callback,void *data)</i>
+<dd> Defines the function to be called whenever the volume is entered.
+  The pointer <i>data</i> is passed as the function's argument.
+<dt><i>void dcuTrigger::setLeaveCallback(dcuCallback callback,void *data)</i>
+<dd> Defines the function to be called whenever the volume is exited.
+  The pointer <i>data</i> is passed as the function's argument.
+<dt><i>void dcuTrigger::setVolume(dcuVolume *v)</i>
+<dd> Defines the volume to test for entering/exiting.
+<dt><i>void dcuTrigger::update(float pos[3])</i>
+<dd> Updates the trigger. The position <i>pos</i> is tested to see if it is
+  inside the trigger's volume.  If <i>pos</i> is inside the volume, and was
+  not inside last time update() was called, the enter callback function is
+  called.  If <i>pos</i> is outside of the volume, and was inside the last
+  time update() was called, the leave callback function is called.
+<dt><i>dcuCallback dcuTrigger::enterCallback(void)</i>
+<dd> Returns the enter callback function, as set by setEnterCallback().
+<dt><i>void * dcuTrigger::enterCallbackData(void)</i>
+<dd> Returns the enter callback function's data pointer, as set by setEnterCallback().
+<dt><i>dcuCallback dcuTrigger::leaveCallback(void)</i>
+<dd> Returns the leave callback function, as set by setLeaveCallback().
+<dt><i>void * dcuTrigger::leaveCallbackData(void)</i>
+<dd> Returns the leave callback function's data pointer, as set by setLeaveCallback().
+<dt><i>dcuVolume * dcuTrigger::volume(void)</i>
+<dd> Returns the trigger's volume, as set by setVolume() or the constructor.
+</dl>
+
+
+<p><hr><p>
+
+<a name="misc">
+<h3> Miscellaneous Utilities </h3>
+
+<i>#include "dcu.h"</i>
+<p>
+<dl>
+<dt><i>int dcuQueryGLExtension(char *name)</i>
+<dd> Returns TRUE if the OpenGL extension <i>name</i> is supported by
+  graphics hardware.  The test is case-sensitive.
+<dt><i>void dcuDumpStereoWindow(char *basename)</i>
+<dd> Reads the contents of the both front buffers of a CAVE display window,
+  and saves them as a pair of SGI images.  The left eye image is saved as
+  "<i>basename</i>.left.sgi"; the right eye image is saved as
+  "<i>basename</i>.right.sgi".
+<dt><i>void dcuDumpWindow(char *imgname)</i>
+<dd> Saves the contents of the CAVE window's front buffer as an SGI image;
+  <i>imgname</i> is the name of the image file.
+<dt><i>char *dcuNextToken(char **string)</i>
+<dd> Extracts the next token from a string; tokens are delimited by whitespace
+  characters.  A pointer to the beginning of the token is returned; the
+  first whitespace after the token is replaced by a null character.
+  <i>*string</i> is modified to point to the next character in the string
+  after the returned token.
+<dt><i>int dcuGetStringID(char *str,struct _dcukeyword *table)</i>
+<dd> Looks up the string <i>str</i> in the table <i>table</i>, and returns
+  the integer associated with that string.  If <i>str</i> is not found,
+  -1 is returned.  The string comparison is case insensitive.
+  The table is an array of _dcukeyword structs; the struct is defined as:
+<pre>
+	struct _dcukeyword {  char *str;  int id;  };
+</pre>
+  The last entry in <i>table</i> must have a <i>str</i> member of NULL,
+  to mark the end of the array.
+</dl>
+
+
+
+</body>
+</html>

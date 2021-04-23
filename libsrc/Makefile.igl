@@ -1,0 +1,38 @@
+CAVEDIR = /usr/local/CAVE
+CAVELIBDIR = $(CAVEDIR)/lib
+CAVEINCDIR = $(CAVEDIR)/include
+#CAVEDIR = ../../src/v2.5.6
+#CAVELIBDIR = $(CAVEDIR)
+#CAVEINCDIR = $(CAVEDIR)
+SNDINCDIR = /usr/local/CAVE/include
+SNDLIBDIR = /usr/local/CAVE/lib
+DAVEDIR = $(HOME)
+DAVELIBDIR = $(DAVEDIR)/lib
+DAVEINCDIR = $(DAVEDIR)/include
+
+OPTorDEBUG = -g
+
+CFLAGS = -I$(CAVEINCDIR) -I$(SNDINCDIR) $(OPTorDEBUG)  -UOPENGL  -DIRISGL
+C++FLAGS = $(CFLAGS)
+LFLAGS = $(OPTorDEBUG)
+
+LIBS = -L$(CAVELIBDIR) -lcave \
+	-L$(DAVELIBDIR) -lwave \
+	-lgl -lm -limage
+
+
+LIBOBJS = dcuAudioEnv.o \
+	dcuSample.o dcuLoopSample.o dcuRandomSample.o dcuTriggerSample.o \
+	dcuWandTriggerSample.o \
+	dcuVolume.o dcuPointVolume.o dcuSphereVolume.o dcuBoxVolume.o \
+	dcuTransform.o dcuGrabber.o \
+	dcuTrigger.o \
+	dcuDump.o \
+	misc.o
+
+
+libdcu_igl.a: $(LIBOBJS)
+	rm -f libdcu_igl.a
+	ar ru libdcu_igl.a $(LIBOBJS)
+
+

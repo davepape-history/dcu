@@ -1,0 +1,4 @@
+newmtl grey
+Ka .3 .3 .6
+Kd .6 .6 .6
+illum 1

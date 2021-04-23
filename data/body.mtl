@@ -1,0 +1,4 @@
+newmtl brown
+Ka .3 .2 0
+Kd .6 .4 0
+illum 1
